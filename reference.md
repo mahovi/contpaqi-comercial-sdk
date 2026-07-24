@@ -198,10 +198,11 @@ más navegación (`fPosPrimer<X>`/`fPosUltimo<X>`/`fPosSiguiente<X>`/
   `fSaldarDocumento`/`fSaldarDocumento_Param`, `fBorrarAsociacion`/
   `fBorrarAsociacion_Param`.
 
-## ⚠️ Licenciamiento -- posible pista para errores de registro/activación
+## Licenciamiento -- investigado y verificado con GetProcAddress
 
-El header expone funciones y un mecanismo **separado** para licenciamiento,
-vía una DLL llamada `Runtime.dll` (no `MGWServicios.dll`):
+El header expone funciones para licenciamiento (documentadas en el manual
+de **AdminPAQ**, no en el de Comercial, pero declaradas en el mismo header
+compartido), más un mecanismo separado vía una DLL `Runtime.dll`:
 
 ```c
 extern "C" STDEXPIMP int  PASCAL fInicializaLicenseInfo(int aSistema);
@@ -216,6 +217,41 @@ typedef int (__stdcall *ptr_RTQueryLicenseInfo)(bool* aIsEvaluation, bool* aIsTe
                                       UINT* aMaxDays, UINT* aMaxRuns, UINT* aMaxUsageHours,
                                       UINT* aMaxToken1, UINT* aMaxToken2,
                                       int* aExtra1, int* aExtra2);
+```
+
+**Verificado en producción con `GetProcAddress` directo sobre el archivo
+(no solo probando y viendo el error -- prueba definitiva de qué exporta
+cada DLL):**
+
+- `fInicializaLicenseInfo` **sí existe** en `MGWSERVICIOS.DLL` de Comercial.
+  Probada con `aSistema=0` (código documentado solo para AdminPAQ, sin
+  código conocido para Comercial) -- regresó `0` (éxito): la conexión al
+  servidor de licencias funciona a nivel básico.
+- `fObtieneLicencia` **NO existe** en `MGWSERVICIOS.DLL` de Comercial, ni
+  en `RuntimeAPI.dll` (el candidato más cercano al `Runtime.dll` del
+  header -- los nombres de DLL de CONTPAQi cambian entre versiones).
+  Exclusiva de AdminPAQ en esta instalación.
+
+Patrón para verificar exports de una DLL sin herramientas de Visual Studio
+(útil para cualquier función dudosa en el futuro -- ejecutar con
+PowerShell de **32 bits**, `%windir%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`,
+ya que el DLL es de 32 bits):
+
+```powershell
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class T {
+    [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetCurrentDirectory(string p);
+    [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr LoadLibrary(string dllPath);
+    [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
+}
+"@
+$dir = "C:\Program Files (x86)\Compac\COMERCIAL"
+[T]::SetCurrentDirectory($dir) | Out-Null   # necesario para resolver dependencias del DLL
+$h = [T]::LoadLibrary("$dir\MGWServicios.dll")
+$addr = [T]::GetProcAddress($h, "NombreDeFuncion")
+# $addr -eq [IntPtr]::Zero  ->  NO existe ese export en esta DLL
 ```
 
 Si te encuentras con errores de "sistema no registrado" o mensajes

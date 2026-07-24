@@ -32,15 +32,23 @@ el resto resultaron ser de otros productos CONTPAQi, ver abajo):
   ya usadas y funcionando, el catálogo completo por categoría, y las
   estructuras traducidas a C# para las funciones "Alto Nivel".
 
-**Otros 9 archivos del mismo lote del proveedor NO se ingirieron aquí** por
-ser de productos distintos (DLLs y APIs diferentes, no aplican a Comercial):
-3 de **CONTPAQi Bancos**, 2 de **CONTPAQi Contabilidad**, 1 de **AdminPAQ**
-(+ Factura Electrónica), 1 overview genérico multi-producto, y 1 guía de
-"Examinador de Objetos" específica para los SDKs de Bancos/Contabilidad
-(basados en COM, no aplica al acceso directo por P/Invoke que usa esta
-skill). Si en el futuro se integra con alguno de esos otros productos,
-esos manuales existen y valdría la pena revisarlos -- pero para Comercial
-son ruido.
+**Otros 9 archivos del mismo lote del proveedor son de productos distintos**
+(DLLs y APIs diferentes -- la mayoría no aplica a Comercial): 3 de
+**CONTPAQi Bancos**, 2 de **CONTPAQi Contabilidad**, 1 overview genérico
+multi-producto, y 1 guía de "Examinador de Objetos" específica para los
+SDKs de Bancos/Contabilidad (basados en COM, no aplica al acceso directo
+por P/Invoke que usa esta skill) -- esos 6 sí son ruido para Comercial. El
+de **AdminPAQ** (`Funciones SDK-ADMW.PDF`) es la excepción: aunque es de
+otro producto, documenta funciones de licenciamiento (`fInicializaLicenseInfo`,
+`fObtieneLicencia`) declaradas en el mismo header compartido -- **sí vale
+la pena revisarlo** para cualquier función que aparezca en `MGW_SDK.h` sin
+documentación en el manual de Comercial, ya que puede estar documentada
+ahí en su lugar (aprendido después de descartarlo una vez sin razón
+suficiente).
+
+Si en el futuro se integra con Bancos, Contabilidad o AdminPAQ, esos
+manuales existen y valdría la pena revisarlos a fondo -- para Comercial,
+salvo la excepción de licenciamiento ya señalada, son ruido.
 
 ## Secuencia de inicialización (obligatoria, en este orden)
 
@@ -188,17 +196,31 @@ Documento, Movimiento, Dirección):
   tablas suelen traer prefijo `CAC#####`).
 - Cuando el problema aterriza en licenciamiento/registro del SDK (los tres
   puntos de arriba): esto ya no se resuelve solo con cambios de código de
-  integración. **Antes de escalar a soporte de CONTPAQi**, hay una pista
-  concreta sin probar todavía: `MGW_SDK.h` expone `fObtieneLicencia(aCodActiva,
-  aCodSitio, aSerie, aTagVersion)` y `fInicializaLicenseInfo(aSistema)`, más
-  un mecanismo separado vía `Runtime.dll` (`RTQueryLicenseInfo`, etc. -- ver
-  `reference.md`) que parece ser precisamente el sistema de activación/
-  consulta de licencia. Vale la pena probar `fObtieneLicencia` para ver qué
-  información de licencia devuelve para la instalación actual antes de
-  escalar. Si aun así no se resuelve: **escalar a soporte técnico de
-  CONTPAQi directamente** (no solo al proveedor de TI/infraestructura local
-  -- puede que ni ellos sepan activarlo), pasándoles el mensaje de error
-  exacto y en qué llamada ocurrió.
+  integración. Se investigó la pista de `fObtieneLicencia`/
+  `fInicializaLicenseInfo` (documentadas solo en el manual de **AdminPAQ**,
+  "Funciones SDK-ADMW.PDF" -- no en el de Comercial, pero declaradas en el
+  mismo `MGW_SDK.h` compartido) -- **verificado con `GetProcAddress`
+  directo sobre la DLL real** (no solo probando y viendo el error, para no
+  repetir el error de descartar algo sin comprobarlo a fondo):
+  - `fInicializaLicenseInfo` **sí existe** en `MGWSERVICIOS.DLL` de
+    Comercial y, probada con `aSistema=0` (código documentado solo para
+    AdminPAQ, sin código conocido para Comercial), **regresó éxito (0)** --
+    es decir, la conexión al servidor de licencias en sí funciona a nivel
+    básico.
+  - `fObtieneLicencia` **NO existe** como export en `MGWSERVICIOS.DLL` de
+    Comercial (confirmado, no solo con `DllImport` -- también con
+    `GetProcAddress` manual sobre el archivo, que es la prueba definitiva).
+    Tampoco existe en `RuntimeAPI.dll` (el candidato más cercano al
+    "Runtime.dll" del header). Es una función exclusiva de AdminPAQ en esta
+    instalación -- descartada para Comercial.
+  - Conclusión de esta pista: el mecanismo de licencia SÍ es alcanzable y
+    responde, pero no hay forma (encontrada hasta ahora) de consultar el
+    detalle de la licencia específicamente para el módulo SDK de Comercial
+    desde código. **Escalar a soporte técnico de CONTPAQi directamente**
+    (no solo al proveedor de TI/infraestructura local -- puede que ni
+    ellos sepan activarlo), pasándoles el mensaje de error exacto, en qué
+    llamada ocurrió, y que `fInicializaLicenseInfo` confirma que el
+    servidor de licencias responde.
 
 ## Gotchas de despliegue (Windows Server sin Visual Studio)
 
