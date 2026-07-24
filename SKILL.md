@@ -50,6 +50,25 @@ Si en el futuro se integra con Bancos, Contabilidad o AdminPAQ, esos
 manuales existen y valdría la pena revisarlos a fondo -- para Comercial,
 salvo la excepción de licenciamiento ya señalada, son ruido.
 
+**Los 11 archivos se leyeron completos, no solo por título/muestreo**
+(2026-07-24, a petición explícita después de que quedara claro que
+descartar documentos por su título había hecho perder información real
+más de una vez). Confirmado con lectura real, no solo grep:
+- Los 5 de Bancos/Contabilidad y el overview general usan una arquitectura
+  **distinta** por completo: SDK COM (`TSdkSesion`, `SDKCONTPAQNGLib.dll`,
+  métodos como `.firmaUsuario()`/`.abreEmpresa()`), no las funciones
+  planas de `MGWServicios.dll` que usa Comercial -- confirma que
+  genuinamente no aplican, no es solo una suposición por el título.
+- El manual de AdminPAQ sí comparte arquitectura con Comercial (mismo
+  header `MGW_SDK.h`) y de ahí salió el hallazgo de `fAfectaDocto_Param`
+  (ver más abajo) -- justo el tipo de cosa que se habría perdido si no se
+  hubiera insistido en revisarlo a fondo.
+- Dato menor: uno de los ejemplos de Bancos usa
+  `firmaUsuarioParams("SUPERVISOR", "")` como usuario de ejemplo -- refuerza
+  que `SUPERVISOR` sin contraseña es una convención/cuenta de ejemplo
+  estándar de CONTPAQi en toda su documentación, no algo específico de una
+  instalación en particular.
+
 ## Secuencia de inicialización (obligatoria, en este orden)
 
 1. **Ubicar el SDK vía registro de Windows**:
@@ -162,6 +181,44 @@ Documento, Movimiento, Dirección):
   fLeeDatoMovimiento(campo, valor, len)                -- por cada uno
   fCancelaFiltroMovimiento()                            -- al terminar
   ```
+
+## Gotcha #2: "afectar" el documento después de crearlo (`fAfectaDocto_Param`)
+
+Crear un documento (`fEditarDocumento`+`fSetDatoDocumento`+`fGuardaDocumento`)
+y sus movimientos (`fEditarMovimiento`+`fSetDatoMovimiento`+`fGuardaMovimiento`)
+**no es suficiente** -- la existencia y los costos se actualizan, pero los
+**acumulados del sistema no**, hasta que el documento se "afecta"
+explícitamente:
+
+```csharp
+[DllImport("MGWSERVICIOS.DLL")]
+public static extern int fAfectaDocto_Param(string aCodConcepto, string aSerie, double aFolio, bool aAfecta);
+
+// después de guardar documento + movimientos:
+Sdk.fAfectaDocto_Param(codigoConcepto, serie, folio, true);
+```
+
+Esto **no está documentado bajo su propio encabezado en el manual de
+Comercial** -- el manual solo menciona de pasada, en la introducción de
+"Trabajando con Documentos", que "existen dos tipos de afectación, una
+para los documentos de cargo y abono y otra para los demás tipos de
+documento", sin nunca explicar cómo hacerlo. Se encontró:
+- La función `fAfectaDocto`/`fAfectaDocto_Param` **sí está declarada** en
+  el header de Comercial (`MGW_SDK.h`), bajo la categoría "CheqPAQ" del
+  catálogo -- fácil de pasar por alto pensando que es específica de esa
+  integración.
+- El manual de **AdminPAQ** (misma familia de SDK, mismo patrón de
+  funciones) sí documenta el flujo completo: `fInicializaSDK → fAbreEmpresa
+  → Alta de documento → Alta de movimientos → Afectar documento →
+  fCierraEmpresa → fTerminaSDK` -- el paso de "afectar" es obligatorio en
+  el diagrama de flujo oficial, no opcional.
+- El folio real del documento hay que leerlo con `fLeeDatoDocumento("cFolio",
+  ...)` después de `fGuardaDocumento` -- no asumir que se conoce de
+  antemano, el SDK lo autoasigna.
+
+Todavía no se ha podido probar esto en vivo (bloqueado por el problema de
+licenciamiento del SDK, ver más abajo) -- queda como el paso a verificar en
+cuanto ese bloqueo se resuelva.
 
 ## Cómo interpretar mensajes de error reales (no tomarlos literal)
 

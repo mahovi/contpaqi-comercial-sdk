@@ -108,6 +108,11 @@ public static class Sdk
     public static extern int fGuardaDocumento();
     [DllImport("MGWSERVICIOS.DLL")]
     public static extern int fSiguienteFolio(string aCodigoConcepto, StringBuilder aSerie, ref double aFolio);
+    // Obligatorio después de guardar documento + movimientos -- ver
+    // "Gotcha #2" en SKILL.md. Sin esto, los acumulados del sistema no se
+    // actualizan aunque la existencia/costos sí.
+    [DllImport("MGWSERVICIOS.DLL")]
+    public static extern int fAfectaDocto_Param(string aCodConcepto, string aSerie, double aFolio, bool aAfecta);
 
     // --- Movimientos (Bajo Nivel) ---
     [DllImport("MGWSERVICIOS.DLL")]
@@ -399,6 +404,9 @@ var directorio = new StringBuilder(512);
 Sdk.fPosPrimerEmpresa(ref idEmpresa, nombre, directorio);
 Sdk.fAbreEmpresa(directorio.ToString());
 // ... operaciones ...
+// Si se creó/editó un documento: fAfectaDocto_Param(concepto, serie, folio, true)
+// ANTES de cerrar -- ver Gotcha #2 en SKILL.md. Sin esto los acumulados
+// del sistema no se actualizan.
 Sdk.fCierraEmpresa();
 Sdk.fTerminaSDK();
 ```
