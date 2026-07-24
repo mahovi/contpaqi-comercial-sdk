@@ -279,6 +279,52 @@ cuanto ese bloqueo se resuelva.
     llamada ocurrió, y que `fInicializaLicenseInfo` confirma que el
     servidor de licencias responde.
 
+## Actualización 2026-07-24: manual oficial en línea, más pistas de licencia
+
+CONTPAQi mantiene un **manual de referencia del SDK en línea, vivo**
+(actualizado a la fecha, no un PDF congelado):
+[conocimiento.blob.core.windows.net/conocimiento/Manuales/MR_SDK/portada.html](https://conocimiento.blob.core.windows.net/conocimiento/Manuales/MR_SDK/portada.html) --
+cubre tanto Comercial Premium como Factura Electrónica (ambos comparten
+`fSetNombrePAQ`/`fInicializaSDK`). Se revisó a fondo (2026-07-24, misma
+estructura que el PDF: "Funciones generales" → "Inicialización/Terminación"
+→ etc.) y **confirma que `fInicioSesionSDK` sigue sin documentarse
+oficialmente**, ni siquiera en esta versión viva -- no es un vacío de nuestra
+copia vieja del PDF, es genuinamente ausente de la documentación oficial de
+CONTPAQi. Tampoco trae tabla de códigos de error ni menciona licenciamiento
+del SDK específicamente. Útil como referencia general de las funciones que
+sí documentan, pero no resuelve el bloqueo de licenciamiento.
+
+**Hipótesis descartada con prueba directa**: se investigó en la web (fuente:
+Communi-TI) que "la aplicación que consume el SDK debe ejecutarse en modo
+administrador". Se probó explícitamente -- una sesión RDP interactiva real
+con UAC elevado de verdad (no solo pertenecer al grupo Administradores) --
+y el resultado fue el mismo error de `RepositorioAdminPAQ` que en todos los
+intentos anteriores. **Modo administrador NO es la pieza faltante** -- ya
+se había probado además, sin saberlo entonces, corriendo elevado (las
+sesiones WinRM de un admin local corren con nivel de integridad alto por
+default, confirmado con `whoami /groups`).
+
+**Pista más fuerte encontrada hasta ahora**: los componentes de
+licenciamiento tienen fechas de build inconsistentes en esta instalación --
+`AppKeyLicenseServer.exe`/`AppKeyAuthServer.exe` (el Servidor de Licencias,
+en `C:\Program Files (x86)\Compac\Servidor de Licencias\AppkeyLicenseServer\`)
+son de **enero 2025**, mientras que `AppKeyX.dll`/`RuntimeAPI.dll` (los
+componentes de licenciamiento que trae Comercial mismo) son de
+**diciembre 2025** -- casi 11 meses de diferencia, aunque ambos reporten la
+misma versión "25.0.0.1". Comprobar con:
+
+```powershell
+(Get-Item "<ruta>\archivo.dll").VersionInfo
+```
+
+Corroborado además por un hallazgo independiente: la propia aplicación de
+escritorio Comercial (no el SDK) truena con **"Error de protección: Faltan
+recursos de la protección"** al intentar abrir una segunda sesión
+concurrente -- confirma que el problema no es exclusivo del SDK, es un tema
+de protección/licenciamiento a nivel sistema. Sin confirmar todavía si
+actualizar el Servidor de Licencias resuelve esto -- requiere el instalador
+correcto de CONTPAQi, algo que solo el proveedor/CONTPAQi puede aplicar.
+
 ## Gotchas de despliegue (Windows Server sin Visual Studio)
 
 - Compilar con `csc.exe` de **.NET Framework** (no `dotnet build`/.NET
