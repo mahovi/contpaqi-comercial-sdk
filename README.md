@@ -21,8 +21,13 @@ instalarlo como plugin/skill según corresponda) para que quede disponible
 al escribir o debuggear integraciones contra este SDK.
 
 - `SKILL.md` -- la guía principal.
-- `reference.md` -- declaraciones P/Invoke (C#) ya funcionando, patrón de
-  transferencia de archivos por WinRM, y comando de compilación.
+- `reference.md` -- declaraciones P/Invoke (C#) ya funcionando, catálogo
+  completo de funciones por categoría, structs traducidos para las
+  funciones "Alto Nivel", tabla de constantes de nombres de campo, patrón
+  de transferencia de archivos por WinRM, y comando de compilación.
+- `MGW_SDK.h` -- header C original del proveedor (constantes de campo,
+  catálogo completo de funciones, structs) -- fuente autoritativa para
+  cualquier cosa que no esté ya traducida en `reference.md`.
 
 No asume ningún proyecto específico -- es reutilizable para cualquier
 integración contra CONTPAQi Comercial vía su SDK.

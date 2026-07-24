@@ -12,16 +12,35 @@ fueron en descubrir por prueba y error cosas que el manual no menciona. No
 vuelvas a repetir ese trabajo: esto ya está validado contra un servidor
 real en producción.
 
-Fuentes usadas para armar esto:
-- El manual oficial (incompleto, ver gotchas abajo -- no confiar ciegamente
-  en sus ejemplos).
+Fuentes usadas para armar esto (de un lote de 11 archivos del proveedor --
+el resto resultaron ser de otros productos CONTPAQi, ver abajo):
+- El manual oficial "Manual SDK Sistemas Comerciales.pdf" (incompleto, ver
+  gotchas abajo -- no confiar ciegamente en sus ejemplos).
+- **`MGW_SDK.h`** (en este mismo directorio) -- el header C original del
+  DLL, mucho más completo que el manual: todas las constantes de nombre de
+  campo, el catálogo completo de funciones, y las estructuras de datos para
+  las funciones "Alto Nivel" (antes evitadas por no tener esto). Es de una
+  revisión anterior a la instalación validada (no incluye
+  `fInicioSesionSDK`, que sí existe y funciona en la versión real usada) --
+  tratarlo como catálogo casi completo, no como límite exacto.
 - La librería open-source
   [ARSoftware.Contpaqi.Comercial](https://github.com/AndresRamos/ARSoftware.Contpaqi.Comercial)
-  (más completa en varios puntos -- ahí se encontró `fInicioSesionSDK`).
+  (ahí se encontró `fInicioSesionSDK`, ausente de `MGW_SDK.h`).
 - Verificación directa contra SQL Server (la base de datos real detrás de
   Comercial) para confirmar nombres de tabla/columna.
 - `reference.md` en este mismo directorio tiene las declaraciones P/Invoke
-  ya usadas y funcionando.
+  ya usadas y funcionando, el catálogo completo por categoría, y las
+  estructuras traducidas a C# para las funciones "Alto Nivel".
+
+**Otros 9 archivos del mismo lote del proveedor NO se ingirieron aquí** por
+ser de productos distintos (DLLs y APIs diferentes, no aplican a Comercial):
+3 de **CONTPAQi Bancos**, 2 de **CONTPAQi Contabilidad**, 1 de **AdminPAQ**
+(+ Factura Electrónica), 1 overview genérico multi-producto, y 1 guía de
+"Examinador de Objetos" específica para los SDKs de Bancos/Contabilidad
+(basados en COM, no aplica al acceso directo por P/Invoke que usa esta
+skill). Si en el futuro se integra con alguno de esos otros productos,
+esos manuales existen y valdría la pena revisarlos -- pero para Comercial
+son ruido.
 
 ## Secuencia de inicialización (obligatoria, en este orden)
 
@@ -82,17 +101,21 @@ un lock interno del SDK que no se libera limpiamente sin pasar por
 normal de Comercial en ese caso, pero evita forzar cierres si puedes dejar
 que el proceso termine solo o usar un timeout más generoso primero.
 
-## El patrón "Bajo Nivel" (usar esto, no las funciones "Alto Nivel")
+## Dos niveles por entidad: "Alto Nivel" y "Bajo Nivel"
 
 El SDK expone dos niveles por cada entidad (Cliente/Proveedor, Producto,
-Documento, Movimiento):
+Documento, Movimiento, Dirección):
 
-- **Alto Nivel** (`fAltaCteProv`, `fAltaDocumento`, etc.): más simple en
-  apariencia, pero requiere una estructura de datos abstracta (`tCteProv`,
-  etc.) cuyo layout exacto **no** viene documentado en el manual oficial.
-  **Evitar** a menos que consigas esa definición de struct de otra fuente.
-- **Bajo Nivel**: mismo patrón repetido para cada entidad, totalmente
-  documentado con tipos primitivos (cadenas, enteros) -- usar siempre esto:
+- **Alto Nivel** (`fAltaCteProv`, `fAltaDocumento`, `fAltaProducto`, etc.):
+  una sola llamada con una estructura de datos (`ClienteProveedor`,
+  `RegDocumento`, `Producto`, etc.) que ya viene completa. **Ahora sí
+  usable** -- `MGW_SDK.h` define el layout exacto de cada struct
+  (`reference.md` trae la traducción a C#/`StructLayout` para las más
+  usadas). Antes se recomendaba evitarlas por no tener esta información.
+- **Bajo Nivel**: mismo patrón repetido para cada entidad, campo por campo
+  -- más verboso pero más fácil de debuggear paso a paso (se ve
+  exactamente qué campo falla). Preferir esto para diagnóstico o cuando
+  falte la definición exacta de algún struct nuevo:
 
   **Lectura:**
   ```
@@ -113,11 +136,16 @@ Documento, Movimiento):
   con movimientos). Con búsqueda previa exitosa, edita el registro
   encontrado.
 
-  Los nombres de `campo` corresponden a las columnas reales de las tablas
-  SQL Server subyacentes (`admClientes`, `admProductos`, `admDocumentos`,
-  `admMovimientos`, `admConceptos`, etc.) -- si tienes acceso a la base de
-  datos, consulta `INFORMATION_SCHEMA.COLUMNS`/`sys.tables` ahí para
-  confirmar nombres exactos en vez de adivinar contra el manual.
+  Los nombres de `campo` son las constantes que trae `MGW_SDK.h`
+  ("Constantes de nombres de campos", ej. `cCodigoConcepto`,
+  `cCodigoCteProv`, `cCodigoProducto`, `cUnidades` -- tabla completa en
+  `reference.md`). **Ojo**: estos nombres NO siempre coinciden con las
+  columnas de las tablas SQL Server subyacentes (`admClientes`,
+  `admProductos`, `admDocumentos`, `admMovimientos`) -- antes de este
+  header se asumió (incorrectamente) que sí coincidían, usando nombres
+  como `CIDCONCEPTODOCUMENTO`/`CIDCLIENTEPROVEEDOR` en vez de los reales
+  `cCodigoConcepto`/`cCodigoCteProv`. Verificar siempre contra `MGW_SDK.h`,
+  no contra el esquema SQL.
 
   Para leer los movimientos (líneas) de un documento ya encontrado:
   ```
@@ -159,10 +187,18 @@ Documento, Movimiento):
   donde CONTPAQi guarda su propio registro/licenciamiento interno (sus
   tablas suelen traer prefijo `CAC#####`).
 - Cuando el problema aterriza en licenciamiento/registro del SDK (los tres
-  puntos de arriba): esto ya no se resuelve desde el código. **Escalar a
-  soporte técnico de CONTPAQi directamente** (no solo al proveedor de TI/
-  infraestructura local -- puede que ni ellos sepan activarlo), pasándoles
-  el mensaje de error exacto y en qué llamada ocurrió.
+  puntos de arriba): esto ya no se resuelve solo con cambios de código de
+  integración. **Antes de escalar a soporte de CONTPAQi**, hay una pista
+  concreta sin probar todavía: `MGW_SDK.h` expone `fObtieneLicencia(aCodActiva,
+  aCodSitio, aSerie, aTagVersion)` y `fInicializaLicenseInfo(aSistema)`, más
+  un mecanismo separado vía `Runtime.dll` (`RTQueryLicenseInfo`, etc. -- ver
+  `reference.md`) que parece ser precisamente el sistema de activación/
+  consulta de licencia. Vale la pena probar `fObtieneLicencia` para ver qué
+  información de licencia devuelve para la instalación actual antes de
+  escalar. Si aun así no se resuelve: **escalar a soporte técnico de
+  CONTPAQi directamente** (no solo al proveedor de TI/infraestructura local
+  -- puede que ni ellos sepan activarlo), pasándoles el mensaje de error
+  exacto y en qué llamada ocurrió.
 
 ## Gotchas de despliegue (Windows Server sin Visual Studio)
 
@@ -178,7 +214,11 @@ Documento, Movimiento):
 
 ## Ver también
 
-`reference.md` en este directorio -- declaraciones P/Invoke (C#) ya usadas
-y funcionando para: inicialización, Clientes/Proveedores, Productos,
-Documentos, Movimientos, Existencias y Precios. Punto de partida directo
-para escribir nuevas integraciones sin volver a extraer firmas del manual.
+- `reference.md` en este directorio -- declaraciones P/Invoke (C#) ya
+  usadas y funcionando, catálogo completo de funciones por categoría,
+  structs traducidos para "Alto Nivel", y la tabla de constantes de
+  nombres de campo. Punto de partida directo para escribir nuevas
+  integraciones sin volver a extraer firmas del manual.
+- `MGW_SDK.h` en este directorio -- header C original del proveedor,
+  fuente autoritativa para cualquier función/struct/constante que no esté
+  ya traducida en `reference.md`.
